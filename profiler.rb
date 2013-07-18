@@ -1,5 +1,4 @@
 require "liquid"
-require "benchmark"
 require "pp"
 
 module LiquidProf
@@ -34,24 +33,18 @@ module LiquidProf
     def avg(array)
       array.length > 0 ? (array.inject(0){ |s,i| s + i }.to_f / array.length.to_f) : 0.0
     end
-  end
 
-  class AsciiReporter < Reporter
-    def report(template)
-      summarize_stats(template)
-
-      line = 0
+    def render_source(template)
       res = ""
+      line = 0
       Profiler.dfs(template.root) do |node, pos|
         next if node.class == Liquid::Document
         if pos == :pre
-          if node.class == String
-            res << node
+          res << if node.class == String
             line += node.scan(/\r?\n/).length
-          elsif node.respond_to?(:raw_markup)
-            res << node.raw_markup
+            node
           else
-            res << node.to_s
+            yield(node, line)
           end
         else
           if node.respond_to?(:raw_markup_end)
@@ -60,9 +53,51 @@ module LiquidProf
           end
         end
       end
-      res = res.split(/\r?\n/)
-      digits = res.length.to_s.length
-      print [*1..res.length].map{ |i| i.to_s.rjust(digits) }.zip(res).map{ |line| line.join(" | ") }.join("\n")
+      res.split(/\r?\n/)
+    end
+  end
+
+  class AsciiReporter < Reporter
+    def add_line_numbers(str)
+      digits = str.length.to_s.length
+      [*1..str.length].map{ |i| i.to_s.rjust(digits) }.zip(str)
+    end
+
+    def add_stats(template)
+    end
+
+    def report(template)
+      summarize_stats(template)
+      sidenotes = Hash.new{ Array.new }
+      res = render_source(template) do |node, line|
+        sidenotes[line] += [ @prof.stats[node.__id__][:times][:avg] ]
+        node.raw_markup
+      end
+      sidenotes = sidenotes.inject(Array.new){ |a,(k,v)| a[k] = v.map{ |time| "%5.2f" % (100 * time) }.join(", "); a }.map{ |i| i || "" }
+      res = sidenotes.zip(res).map{ |line| line.flatten }
+      res = add_line_numbers(res)
+      res.map!{ |line| line.flatten }
+      format_table(res)
+    end
+
+    def format_table(lines)
+      max_width = []
+
+      lines.each do |line|
+        line.each_with_index do |column, i|
+          next if i == line.length-1
+          max_width[i] = [ max_width[i], column.length ].compact.max
+        end
+      end
+
+      lines.each do |line|
+        line.each_with_index do |column, i|
+          next if i == line.length-1
+          line[i] = column.rjust(max_width[i])
+        end
+      end
+
+      lines.map{ |line| line.join("  |  ") }
     end
   end
 
@@ -109,7 +144,7 @@ module LiquidProf
       Profiler.unhook(:initialize, Liquid::Tag)
       Profiler.hook(:initialize, Liquid::Tag) do |node, method, args|
         method.(*args)
-        node.instance_variable_set :@raw_markup, "{% #{args[0].strip} #{args[1].strip} %}"
+        node.instance_variable_set :@raw_markup, "{% " + (args[0].strip + " " + args[1].strip).strip + " %}"
         node.class.class_eval { attr_reader :raw_markup }
       end
 
@@ -125,9 +160,10 @@ module LiquidProf
       Profiler.unhook(:render, tags)
       Profiler.hook(:render, tags) do |node, method, args|
         output = nil
-        time = Benchmark.realtime do
-          output = method.(*args)
-        end
+        start = Time.now
+        sleep 0.001
+        output = method.(*args)
+        time = Time.now - start
         stats_inc(node, time, output.to_s.length)
         output
       end
@@ -170,6 +206,8 @@ module LiquidProf
       def hook(method_name, tags, &block)
         [tags].flatten.each do |tag|
           tag.class_exec(block) do |block|
+            next unless instance_method(method_name).owner == self
+
             define_method "#{method_name}_hooked" do |*args|
               block.yield(self, method("#{method_name}_unhooked"), args)
             end
@@ -201,5 +239,5 @@ prof = LiquidProf::Profiler.new(template)
 template.parse(STDIN.read)
 
 prof.profile(3)
-LiquidProf::AsciiReporter.new(prof).report(template)
+puts LiquidProf::AsciiReporter.new(prof).report(template)
 prof.stats
