@@ -11,7 +11,8 @@ module LiquidProf
     end
 
     def summarize_stats(template)
-      Profiler.dfs(template.root) do |node|
+      Profiler.dfs(template.root) do |node, pos|
+        next unless pos == :pre
         next unless prof.stats.key?(node.__id__)
         node_stats_summary(prof.stats[node.__id__])
       end
@@ -38,6 +39,30 @@ module LiquidProf
   class AsciiReporter < Reporter
     def report(template)
       summarize_stats(template)
+
+      line = 0
+      res = ""
+      Profiler.dfs(template.root) do |node, pos|
+        next if node.class == Liquid::Document
+        if pos == :pre
+          if node.class == String
+            res << node
+            line += node.scan(/\r?\n/).length
+          elsif node.respond_to?(:raw_markup)
+            res << node.raw_markup
+          else
+            res << node.to_s
+          end
+        else
+          if node.respond_to?(:raw_markup_end)
+            res << node.raw_markup_end
+            next
+          end
+        end
+      end
+      res = res.split(/\r?\n/)
+      digits = res.length.to_s.length
+      print [*1..res.length].map{ |i| i.to_s.rjust(digits) }.zip(res).map{ |line| line.join(" | ") }.join("\n")
     end
   end
 
@@ -49,18 +74,7 @@ module LiquidProf
       @template = template
       stats_init(template.root)
       add_profiling(tags)
-    end
-
-    def add_profiling(tags)
-      Profiler.unhook(:render, tags)
-      Profiler.hook(:render, tags) do |node, method, args|
-        output = nil
-        time = Benchmark.realtime do
-          output = method.(*args)
-        end
-        stats_inc(node, time, output.to_s.length)
-        output
-      end
+      add_raw_markup(tags)
     end
 
     def stats_init(root)
@@ -81,6 +95,44 @@ module LiquidProf
 
     private
 
+    def add_raw_markup(tags)
+      tags = tags - [Liquid::Variable, Liquid::Document]
+
+      Profiler.unhook(:create_variable, Liquid::Block)
+      Profiler.hook(:create_variable, Liquid::Block) do |node, method, args|
+        var = method.(*args)
+        var.instance_variable_set :@raw_markup, args.first
+        var.class.class_eval { attr_reader :raw_markup }
+        var
+      end
+
+      Profiler.unhook(:initialize, Liquid::Tag)
+      Profiler.hook(:initialize, Liquid::Tag) do |node, method, args|
+        method.(*args)
+        node.instance_variable_set :@raw_markup, "{% #{args[0].strip} #{args[1].strip} %}"
+        node.class.class_eval { attr_reader :raw_markup }
+      end
+
+      Profiler.unhook(:end_tag, Liquid::Block)
+      Profiler.hook(:end_tag, Liquid::Block) do |node, method, args|
+        node.instance_variable_set :@raw_markup_end, "{% #{node.block_delimiter} %}"
+        node.class.class_eval { attr_reader :raw_markup_end }
+        method.(*args)
+      end
+    end
+
+    def add_profiling(tags)
+      Profiler.unhook(:render, tags)
+      Profiler.hook(:render, tags) do |node, method, args|
+        output = nil
+        time = Benchmark.realtime do
+          output = method.(*args)
+        end
+        stats_inc(node, time, output.to_s.length)
+        output
+      end
+    end
+
     def stats_init_node(node)
       @stats[node.__id__] ||= {}
       [:calls, :times, :lengths].each do |field|
@@ -97,8 +149,8 @@ module LiquidProf
     end
 
     class << self
-      def profile(*args)
-        Profiler.new.profile(*args)
+      def profile(template, *args)
+        Profiler.new(template).profile(*args)
       end
 
       def all_tags
@@ -106,34 +158,35 @@ module LiquidProf
       end
 
       def dfs(root, &block)
-        block.yield(root)
-        if root.respond_to?(:nodelist)
+        block.yield(root, :pre)
+        if root.respond_to?(:nodelist) && root.nodelist
           root.nodelist.each do |child|
             dfs(child, &block)
           end
         end
+        block.yield(root, :post)
       end
 
       def hook(method_name, tags, &block)
-        tags.each do |tag|
+        [tags].flatten.each do |tag|
           tag.class_exec(block) do |block|
-            define_method "#{method_name}_with_profiling" do |*args|
-              block.yield(self, method("#{method_name}_without_profiling"), args)
+            define_method "#{method_name}_hooked" do |*args|
+              block.yield(self, method("#{method_name}_unhooked"), args)
             end
 
-            alias_method "#{method_name}_without_profiling", method_name
-            alias_method method_name, "#{method_name}_with_profiling"
+            alias_method "#{method_name}_unhooked", method_name
+            alias_method method_name, "#{method_name}_hooked"
           end
         end
       end
 
       def unhook(method_name, tags)
-        tags.each do |tag|
+        [tags].flatten.each do |tag|
           tag.class_eval do
-            if method_defined?("#{method_name}_with_profiling")
-              alias_method method_name, "#{method_name}_without_profiling"
-              remove_method "#{method_name}_with_profiling"
-              remove_method "#{method_name}_without_profiling"
+            if method_defined?("#{method_name}_hooked")
+              alias_method method_name, "#{method_name}_unhooked"
+              remove_method "#{method_name}_hooked"
+              remove_method "#{method_name}_unhooked"
             end
           end
         end
@@ -142,10 +195,11 @@ module LiquidProf
   end
 end
 
-template = Liquid::Template.parse(STDIN.read)
-p template.render()
-
+template = Liquid::Template.new
 prof = LiquidProf::Profiler.new(template)
+
+template.parse(STDIN.read)
+
 prof.profile(3)
 LiquidProf::AsciiReporter.new(prof).report(template)
-pp prof.stats
+prof.stats
