@@ -144,7 +144,7 @@ module LiquidProf
     def profile(iterations, *args)
       iterations.times do
         stats_init(@template.root)
-        @template.render(*args)
+        @template.render!(*args)
       end
       stats
     end
@@ -199,6 +199,7 @@ module LiquidProf
     end
 
     def stats_inc(node, time, length)
+      return unless @stats[node.__id__]
       @stats[node.__id__][:calls][:raw][-1] += 1
       @stats[node.__id__][:times][:raw][-1] += time
       @stats[node.__id__][:lengths][:raw][-1] += length
