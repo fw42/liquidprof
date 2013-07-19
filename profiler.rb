@@ -91,11 +91,15 @@ module LiquidProf
         a[k] = v.map{ |stats| format_node_stats(stats) }
         a
       end
-      sidenotes.map!{ |i| i || "" }
-      res = sidenotes.zip(res).map{ |line| line.flatten }
-      res = add_line_numbers(res)
-      res.map!{ |line| line.flatten }
-      format_table(res)
+
+      output = []
+      res.each_with_index do |line, i|
+        (sidenotes[i] || [""]).each_with_index do |note, j|
+          output << ((j == 0) ? [ (i+1).to_s, note, line] : [ "", note, "" ])
+        end
+      end
+
+      format_table(output)
     end
 
     def format_table(lines)
@@ -115,7 +119,7 @@ module LiquidProf
         end
       end
 
-      lines.map{ |line| line.join("  |  ") }
+      lines.map{ |line| line.join("  |  ") }.join("\n")
     end
   end
 
@@ -254,6 +258,6 @@ prof = LiquidProf::Profiler.new(template)
 
 template.parse(STDIN.read)
 
-prof.profile(3)
+prof.profile(10)
 puts LiquidProf::AsciiReporter.new(prof).report(template)
 prof.stats
