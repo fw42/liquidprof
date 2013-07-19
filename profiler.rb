@@ -18,6 +18,19 @@ module LiquidProf
       self
     end
 
+    def format_bytes(bytes)
+      units = ["B", "K", "M"]
+
+      if bytes.to_i < 1024
+        exponent = 0
+      else
+        exponent = (Math.log(bytes)/Math.log(1024)).to_i
+        bytes /= 1024 ** [exponent, units.size].min
+      end
+
+      "#{bytes}#{units[exponent]}"
+    end
+
     private
 
     def node_stats_summary(stats)
@@ -26,7 +39,7 @@ module LiquidProf
         stats[field][:avg] = mu = avg(raw)
         stats[field][:max] = raw.max || 0
         stats[field][:min] = raw.min || 0
-        stats[field][:dev] = Math.sqrt(raw.inject(0){ |s,i| s + (i - mu)**2 } / (raw.length-1).to_f)
+        stats[field][:dev] = raw.length == 1 ? 0.0 : Math.sqrt(raw.inject(0){ |s,i| s + (i - mu)**2 } / (raw.length-1).to_f)
       end
     end
 
@@ -63,17 +76,22 @@ module LiquidProf
       [*1..str.length].map{ |i| i.to_s.rjust(digits) }.zip(str)
     end
 
-    def add_stats(template)
+    def format_node_stats(stats)
+      [ "%dx" % stats[:calls][:avg], "%.2fms" % (100.0 * stats[:times][:avg]), format_bytes(stats[:lengths][:avg]) ].join(", ")
     end
 
     def report(template)
       summarize_stats(template)
       sidenotes = Hash.new{ Array.new }
       res = render_source(template) do |node, line|
-        sidenotes[line] += [ @prof.stats[node.__id__][:times][:avg] ]
+        sidenotes[line] += [ @prof.stats[node.__id__] ]
         node.raw_markup
       end
-      sidenotes = sidenotes.inject(Array.new){ |a,(k,v)| a[k] = v.map{ |time| "%5.2f" % (100 * time) }.join(", "); a }.map{ |i| i || "" }
+      sidenotes = sidenotes.inject(Array.new) do |a,(k,v)|
+        a[k] = v.map{ |stats| format_node_stats(stats) }
+        a
+      end
+      sidenotes.map!{ |i| i || "" }
       res = sidenotes.zip(res).map{ |line| line.flatten }
       res = add_line_numbers(res)
       res.map!{ |line| line.flatten }
@@ -107,16 +125,15 @@ module LiquidProf
     def initialize(template, tags=Profiler.all_tags()+[Liquid::Variable])
       @stats = {}
       @template = template
-      stats_init(template.root)
       add_profiling(tags)
       add_raw_markup(tags)
     end
 
     def stats_init(root)
-      Profiler.dfs(root) do |node|
-        unless node.class == String
-          stats_init_node(node)
-        end
+      Profiler.dfs(root) do |node, pos|
+        next unless pos == :pre
+        next if node.class == String
+        stats_init_node(node)
       end
     end
 
@@ -161,7 +178,6 @@ module LiquidProf
       Profiler.hook(:render, tags) do |node, method, args|
         output = nil
         start = Time.now
-        sleep 0.001
         output = method.(*args)
         time = Time.now - start
         stats_inc(node, time, output.to_s.length)
