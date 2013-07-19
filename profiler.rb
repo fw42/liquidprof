@@ -71,11 +71,6 @@ module LiquidProf
   end
 
   class AsciiReporter < Reporter
-    def add_line_numbers(str)
-      digits = str.length.to_s.length
-      [*1..str.length].map{ |i| i.to_s.rjust(digits) }.zip(str)
-    end
-
     def format_node_stats(stats)
       [ "%dx" % stats[:calls][:avg], "%.2fms" % (100.0 * stats[:times][:avg]), format_bytes(stats[:lengths][:avg]) ].join(", ")
     end
@@ -226,15 +221,22 @@ module LiquidProf
 
       def hook(method_name, tags, &block)
         [tags].flatten.each do |tag|
-          tag.class_exec(block) do |block|
-            next unless instance_method(method_name).owner == self
+          tag.class_exec(block, tag) do |block, tag|
+            # next unless (owner = instance_method(method_name).owner) == self
+            hooked = "#{method_name}_#{tag}_hooked"
+            unhooked = "#{method_name}_#{tag}_unhooked"
 
-            define_method "#{method_name}_hooked" do |*args|
-              block.yield(self, method("#{method_name}_unhooked"), args)
+            define_method hooked do |*args|
+              owner = self.class.instance_method(method_name).owner
+              if method_name != :render || (self.class == owner && owner == tag)
+                block.yield(self, method(unhooked), args)
+              else
+                send(unhooked, *args)
+              end
             end
 
-            alias_method "#{method_name}_unhooked", method_name
-            alias_method method_name, "#{method_name}_hooked"
+            alias_method unhooked, method_name
+            alias_method method_name, hooked
           end
         end
       end
@@ -259,6 +261,6 @@ prof = LiquidProf::Profiler.new(template)
 
 template.parse(STDIN.read)
 
-prof.profile(10)
+prof.profile(1)
 puts LiquidProf::AsciiReporter.new(prof).report(template)
 prof.stats
