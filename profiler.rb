@@ -75,7 +75,7 @@ module LiquidProf
     def format_node_stats(stats)
       [
         "%dx" % stats[:calls][:avg],
-        "%.2fms" % (100.0 * stats[:times][:avg]),
+        "%.2fms" % (1000.0 * stats[:times][:avg]),
         format_bytes(stats[:lengths][:avg])
       ].join(", ")
     end
