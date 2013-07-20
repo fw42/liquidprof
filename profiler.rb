@@ -81,8 +81,7 @@ module LiquidProf
     end
 
     def self.report(template)
-      reporter = AsciiReporter.new(template)
-      reporter.report()
+      AsciiReporter.new(template).report()
     end
 
     def report
