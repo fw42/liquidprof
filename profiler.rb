@@ -14,7 +14,7 @@ module LiquidProf
       Profiler.dfs(template.root) do |node, pos|
         next unless pos == :pre
         next unless prof.stats.key?(node.__id__)
-        node_stats_summary(prof.stats[node.__id__])
+        node_summarize_stats(prof.stats[node.__id__])
       end
       self
     end
@@ -34,7 +34,7 @@ module LiquidProf
 
     private
 
-    def node_stats_summary(stats)
+    def node_summarize_stats(stats)
       [:calls, :times, :lengths].each do |field|
         raw = stats[field][:raw]
         stats[field][:avg] = mu = avg(raw)
@@ -231,34 +231,42 @@ module LiquidProf
       def hook(method_name, tags, &block)
         [tags].flatten.each do |tag|
           tag.class_exec(block, tag) do |block, tag|
-            hooked = "#{method_name}_#{tag}_hooked"
-            unhooked = "#{method_name}_#{tag}_unhooked"
+            hooked_name = LiquidProf::Profiler.hooked(method_name, tag)
+            unhooked_name = LiquidProf::Profiler.unhooked(method_name, tag)
 
-            define_method hooked do |*args|
+            define_method(hooked_name) do |*args|
               owner = self.class.instance_method(method_name).owner
               if method_name != :render || (self.class == owner && owner == tag)
-                block.yield(self, method(unhooked), args)
+                block.yield(self, method(unhooked_name), args)
               else
-                send(unhooked, *args)
+                send(unhooked_name, *args)
               end
             end
 
-            alias_method unhooked, method_name
-            alias_method method_name, hooked
+            alias_method unhooked_name, method_name
+            alias_method method_name, hooked_name
           end
         end
       end
 
       def unhook(method_name, tags)
         [tags].flatten.each do |tag|
-          tag.class_eval do
-            if method_defined?("#{method_name}_hooked")
-              alias_method method_name, "#{method_name}_unhooked"
-              remove_method "#{method_name}_hooked"
-              remove_method "#{method_name}_unhooked"
+          tag.class_eval do |tag|
+            if method_defined?(LiquidProf::Profiler.hooked(method_name, tag))
+              alias_method method_name, LiquidProf::Profiler.unhooked(method_name, tag)
+              remove_method LiquidProf::Profiler.hooked(method_name, tag)
+              remove_method LiquidProf::Profiler.unhooked(method_name, tag)
             end
           end
         end
+      end
+
+      def hooked(method_name, tag)
+        "#{method_name}_#{tag}_hooked"
+      end
+
+      def unhooked(method_name, tag)
+        "#{method_name}_#{tag}_unhooked"
       end
     end
   end
