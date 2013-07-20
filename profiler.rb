@@ -7,6 +7,7 @@ module LiquidProf
 
     def initialize(prof)
       @prof = prof
+      @template = prof.template
     end
 
     def summarize_stats(template)
@@ -75,10 +76,15 @@ module LiquidProf
       [ "%dx" % stats[:calls][:avg], "%.2fms" % (100.0 * stats[:times][:avg]), format_bytes(stats[:lengths][:avg]) ].join(", ")
     end
 
-    def report(template)
-      summarize_stats(template)
+    def self.report(template)
+      reporter = AsciiReporter.new(template)
+      reporter.report()
+    end
+
+    def report
+      summarize_stats(@template)
       sidenotes = Hash.new{ Array.new }
-      res = render_source(template) do |node, line|
+      res = render_source(@template) do |node, line|
         sidenotes[line] += [ @prof.stats[node.__id__] ]
         node.raw_markup
       end
@@ -119,7 +125,7 @@ module LiquidProf
   end
 
   class Profiler
-    attr_accessor :stats
+    attr_accessor :stats, :template
 
     def initialize(template, tags=Profiler.all_tags()+[Liquid::Variable])
       @stats = {}
@@ -136,12 +142,12 @@ module LiquidProf
       end
     end
 
-    def profile(iterations, *args)
+    def profile(iterations=1, *args)
       iterations.times do
         stats_init(@template.root)
         @template.render!(*args)
       end
-      stats
+      self
     end
 
     private
@@ -201,8 +207,11 @@ module LiquidProf
     end
 
     class << self
-      def profile(template, *args)
-        Profiler.new(template).profile(*args)
+      def parse(*args)
+        template = Liquid::Template.new
+        prof = Profiler.new(template)
+        template.parse(*args)
+        prof
       end
 
       def all_tags
@@ -222,7 +231,6 @@ module LiquidProf
       def hook(method_name, tags, &block)
         [tags].flatten.each do |tag|
           tag.class_exec(block, tag) do |block, tag|
-            # next unless (owner = instance_method(method_name).owner) == self
             hooked = "#{method_name}_#{tag}_hooked"
             unhooked = "#{method_name}_#{tag}_unhooked"
 
@@ -256,11 +264,6 @@ module LiquidProf
   end
 end
 
-template = Liquid::Template.new
-prof = LiquidProf::Profiler.new(template)
-
-template.parse(STDIN.read)
-
-prof.profile(1)
-puts LiquidProf::AsciiReporter.new(prof).report(template)
+prof = LiquidProf::Profiler.parse(STDIN.read)
+puts LiquidProf::AsciiReporter.report(prof.profile)
 prof.stats
