@@ -73,7 +73,11 @@ module LiquidProf
 
   class AsciiReporter < Reporter
     def format_node_stats(stats)
-      [ "%dx" % stats[:calls][:avg], "%.2fms" % (100.0 * stats[:times][:avg]), format_bytes(stats[:lengths][:avg]) ].join(", ")
+      [
+        "%dx" % stats[:calls][:avg],
+        "%.2fms" % (100.0 * stats[:times][:avg]),
+        format_bytes(stats[:lengths][:avg])
+      ].join(", ")
     end
 
     def self.report(template)
@@ -130,8 +134,10 @@ module LiquidProf
     def initialize(template, tags=Profiler.all_tags()+[Liquid::Variable])
       @stats = {}
       @template = template
+      remove_profiling(tags)
       add_profiling(tags)
-      add_raw_markup(tags)
+      remove_raw_markup()
+      add_raw_markup()
     end
 
     def stats_init(root)
@@ -152,10 +158,13 @@ module LiquidProf
 
     private
 
-    def add_raw_markup(tags)
-      tags = tags - [Liquid::Variable, Liquid::Document]
-
+    def remove_raw_markup
       Profiler.unhook(:create_variable, Liquid::Block)
+      Profiler.unhook(:initialize, Liquid::Tag)
+      Profiler.unhook(:end_tag, Liquid::Block)
+    end
+
+    def add_raw_markup
       Profiler.hook(:create_variable, Liquid::Block) do |node, method, args|
         var = method.(*args)
         var.instance_variable_set :@raw_markup, args.first
@@ -163,14 +172,12 @@ module LiquidProf
         var
       end
 
-      Profiler.unhook(:initialize, Liquid::Tag)
       Profiler.hook(:initialize, Liquid::Tag) do |node, method, args|
         method.(*args)
         node.instance_variable_set :@raw_markup, "{% " + (args[0].strip + " " + args[1].strip).strip + " %}"
         node.class.class_eval { attr_reader :raw_markup }
       end
 
-      Profiler.unhook(:end_tag, Liquid::Block)
       Profiler.hook(:end_tag, Liquid::Block) do |node, method, args|
         node.instance_variable_set :@raw_markup_end, "{% #{node.block_delimiter} %}"
         node.class.class_eval { attr_reader :raw_markup_end }
@@ -178,8 +185,11 @@ module LiquidProf
       end
     end
 
-    def add_profiling(tags)
+    def remove_profiling(tags)
       Profiler.unhook(:render, tags)
+    end
+
+    def add_profiling(tags)
       Profiler.hook(:render, tags) do |node, method, args|
         output = nil
         start = Time.now
@@ -207,6 +217,29 @@ module LiquidProf
     end
 
     class << self
+      def profile(iterations=1, &block)
+        prof = {}
+
+        hook(:parse, Liquid::Template) do |template, method, args|
+          prof[template.__id__] = Profiler.new(template)
+          method.(*args)
+        end
+
+        hook(:render, Liquid::Template) do |template, method, args|
+          output = ""
+          iterations.times do
+            prof[template.__id__].stats_init(template.root)
+            output = method.(*args)
+          end
+          output
+        end
+
+        yield
+        unhook(:parse, Liquid::Template)
+        unhook(:render, Liquid::Template)
+        prof
+      end
+
       def parse(*args)
         template = Liquid::Template.new
         prof = Profiler.new(template)
@@ -272,6 +305,19 @@ module LiquidProf
   end
 end
 
-prof = LiquidProf::Profiler.parse(STDIN.read)
-puts LiquidProf::AsciiReporter.report(prof.profile)
-prof.stats
+# prof = LiquidProf::Profiler.parse(STDIN.read)
+# puts LiquidProf::AsciiReporter.report(prof.profile)
+# prof.stats
+
+# stats = LiquidProf::Profiler.profile{
+#   template = Liquid::Template.new
+#   template.parse(STDIN.read)
+#   result = template.render
+# }
+
+stats = LiquidProf::Profiler.profile(10) do
+  template = Liquid::Template.parse(STDIN.read)
+  result = template.render
+end
+
+puts LiquidProf::AsciiReporter.report(stats.values.first)
