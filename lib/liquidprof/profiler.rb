@@ -118,8 +118,8 @@ module LiquidProf
 
         hook(:render, Liquid::Template) do |template, method, args|
           output = ""
-          prof.stats_init(template)
           iterations.times do
+            prof.stats_init(template)
             output = method.(*args)
           end
           output
