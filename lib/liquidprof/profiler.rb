@@ -4,7 +4,6 @@ module LiquidProf
 
     def stats_init(root)
       if root.class == Liquid::Template
-        @templates << root
         return stats_init(root.root)
       end
 
@@ -16,6 +15,7 @@ module LiquidProf
     end
 
     def profile(template, iterations=1, *args)
+      @templates << template
       iterations.times do
         stats_init(template)
         template.render!(*args)
@@ -118,6 +118,7 @@ module LiquidProf
 
         hook(:render, Liquid::Template) do |template, method, args|
           output = ""
+          prof.templates << template
           iterations.times do
             prof.stats_init(template)
             output = method.(*args)

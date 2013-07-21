@@ -6,6 +6,10 @@ require 'minitest/pride'
 $LOAD_PATH.unshift File.expand_path('../lib', File.dirname(__FILE__))
 require "liquidprof"
 
+def assert_profile_result(expected, template_str)
+  assert_equal expected, profile(template_str)
+end
+
 def profile(template_str)
   profs = [*1..5].map do |i|
     assert_profile_syntax_doesnt_matter(template_str, i)
@@ -95,6 +99,7 @@ def assert_profile_syntax_doesnt_matter(template_str, iterations=1)
   end
 
   assert_equal 1, templates.map{ |template| template.render }.uniq.length
+  assert_equal 1, profs.first.templates.length
 
   return profs.first, templates.first
 end
