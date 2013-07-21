@@ -1,0 +1,5 @@
+require "liquid"
+require "liquidprof/version"
+require "liquidprof/profiler"
+require "liquidprof/reporter"
+require "liquidprof/ascii_reporter"

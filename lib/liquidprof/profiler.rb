@@ -1,145 +1,13 @@
-require "liquid"
-require "pp"
-
 module LiquidProf
-  class Reporter
-    attr_reader :prof
-
-    def initialize(prof)
-      @prof = prof
-      @template = prof.template
-    end
-
-    def summarize_stats(template)
-      Profiler.dfs(template.root) do |node, pos|
-        next unless pos == :pre
-        next unless prof.stats.key?(node.__id__)
-        node_summarize_stats(prof.stats[node.__id__])
-      end
-      self
-    end
-
-    def format_bytes(bytes)
-      units = ["B", "K", "M"]
-
-      if bytes.to_i < 1024
-        exponent = 0
-      else
-        exponent = (Math.log(bytes)/Math.log(1024)).to_i
-        bytes /= 1024 ** [exponent, units.size].min
-      end
-
-      "#{bytes}#{units[exponent]}"
-    end
-
-    private
-
-    def node_summarize_stats(stats)
-      [:calls, :times, :lengths].each do |field|
-        raw = stats[field][:raw]
-        stats[field][:avg] = mu = avg(raw)
-        stats[field][:max] = raw.max || 0
-        stats[field][:min] = raw.min || 0
-        stats[field][:dev] = raw.length == 1 ? 0.0 : Math.sqrt(raw.inject(0){ |s,i| s + (i - mu)**2 } / (raw.length-1).to_f)
-      end
-    end
-
-    def avg(array)
-      array.length > 0 ? (array.inject(0){ |s,i| s + i }.to_f / array.length.to_f) : 0.0
-    end
-
-    def render_source(template)
-      res = ""
-      line = 0
-      Profiler.dfs(template.root) do |node, pos|
-        next if node.class == Liquid::Document
-        if pos == :pre
-          res << if node.class == String
-            line += node.scan(/\r?\n/).length
-            node
-          else
-            yield(node, line)
-          end
-        else
-          if node.respond_to?(:raw_markup_end)
-            res << node.raw_markup_end
-            next
-          end
-        end
-      end
-      res.split(/\r?\n/)
-    end
-  end
-
-  class AsciiReporter < Reporter
-    def format_node_stats(stats)
-      [
-        "%dx" % stats[:calls][:avg],
-        "%.2fms" % (1000.0 * stats[:times][:avg]),
-        format_bytes(stats[:lengths][:avg])
-      ].join(", ")
-    end
-
-    def self.report(template)
-      AsciiReporter.new(template).report()
-    end
-
-    def report
-      summarize_stats(@template)
-      sidenotes = Hash.new{ Array.new }
-      res = render_source(@template) do |node, line|
-        sidenotes[line] += [ @prof.stats[node.__id__] ]
-        node.raw_markup
-      end
-      sidenotes = sidenotes.inject(Array.new) do |a,(k,v)|
-        a[k] = v.map{ |stats| format_node_stats(stats) }
-        a
-      end
-
-      output = []
-      res.each_with_index do |line, i|
-        (sidenotes[i] || [""]).each_with_index do |note, j|
-          output << ((j == 0) ? [ (i+1).to_s, note, line] : [ "", note, "" ])
-        end
-      end
-
-      format_table(output)
-    end
-
-    def format_table(lines)
-      max_width = []
-
-      lines.each do |line|
-        line.each_with_index do |column, i|
-          next if i == line.length-1
-          max_width[i] = [ max_width[i], column.length ].compact.max
-        end
-      end
-
-      lines.each do |line|
-        line.each_with_index do |column, i|
-          next if i == line.length-1
-          line[i] = column.rjust(max_width[i])
-        end
-      end
-
-      lines.map{ |line| line.join("  |  ") }.join("\n")
-    end
-  end
-
   class Profiler
-    attr_accessor :stats, :template
-
-    def initialize(template, tags=Profiler.all_tags()+[Liquid::Variable])
-      @stats = {}
-      @template = template
-      remove_profiling(tags)
-      add_profiling(tags)
-      remove_raw_markup()
-      add_raw_markup()
-    end
+    attr_accessor :stats, :templates
 
     def stats_init(root)
+      if root.class == Liquid::Template
+        @templates << root
+        return stats_init(root.root)
+      end
+
       Profiler.dfs(root) do |node, pos|
         next unless pos == :pre
         next if node.class == String
@@ -147,15 +15,13 @@ module LiquidProf
       end
     end
 
-    def profile(iterations=1, *args)
+    def profile(template, iterations=1, *args)
       iterations.times do
-        stats_init(@template.root)
-        @template.render!(*args)
+        stats_init(template)
+        template.render!(*args)
       end
-      self
+      template
     end
-
-    private
 
     def remove_raw_markup
       Profiler.unhook(:create_variable, Liquid::Block)
@@ -199,6 +65,15 @@ module LiquidProf
       end
     end
 
+    private
+
+    def initialize(tags)
+      @stats = {}
+      @templates = []
+      add_profiling(tags)
+      add_raw_markup()
+    end
+
     def stats_init_node(node)
       @stats[node.__id__] ||= {}
       [:calls, :times, :lengths].each do |field|
@@ -216,34 +91,45 @@ module LiquidProf
     end
 
     class << self
+      def profiler
+        @@profiler
+      end
+
+      def start
+        @@profiler ||= Profiler.new(Profiler.all_tags() + [Liquid::Variable])
+      end
+
+      def stop
+        return unless @@profiler
+        tags = Profiler.all_tags() + [Liquid::Variable]
+        @@profiler.remove_profiling(tags)
+        @@profiler.remove_raw_markup()
+        prof = @@profiler
+        @@profiler = nil
+        prof
+      end
+
       def profile(iterations=1, &block)
-        prof = {}
+        prof = Profiler.start
 
         hook(:parse, Liquid::Template) do |template, method, args|
-          prof[template.__id__] = Profiler.new(template)
           method.(*args)
         end
 
         hook(:render, Liquid::Template) do |template, method, args|
           output = ""
+          prof.stats_init(template)
           iterations.times do
-            prof[template.__id__].stats_init(template.root)
             output = method.(*args)
           end
           output
         end
 
         yield
+
         unhook(:parse, Liquid::Template)
         unhook(:render, Liquid::Template)
-        prof
-      end
-
-      def parse(*args)
-        template = Liquid::Template.new
-        prof = Profiler.new(template)
-        template.parse(*args)
-        prof
+        Profiler.stop
       end
 
       def all_tags
@@ -303,20 +189,3 @@ module LiquidProf
     end
   end
 end
-
-# prof = LiquidProf::Profiler.parse(STDIN.read)
-# puts LiquidProf::AsciiReporter.report(prof.profile)
-# prof.stats
-
-# stats = LiquidProf::Profiler.profile{
-#   template = Liquid::Template.new
-#   template.parse(STDIN.read)
-#   result = template.render
-# }
-
-stats = LiquidProf::Profiler.profile(10) do
-  template = Liquid::Template.parse(STDIN.read)
-  result = template.render
-end
-
-puts LiquidProf::AsciiReporter.report(stats.values.first)
