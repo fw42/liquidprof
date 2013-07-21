@@ -26,7 +26,7 @@ module LiquidProf
         bytes /= 1024 ** [exponent, units.size].min
       end
 
-      "#{bytes}#{units[exponent]}"
+      "#{bytes.to_i}#{units[exponent]}"
     end
 
     private
