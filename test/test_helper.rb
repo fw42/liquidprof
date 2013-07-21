@@ -3,7 +3,7 @@ require 'minitest/autorun'
 require 'minitest/unit'
 require 'minitest/pride'
 
-$LOAD_PATH.unshift File.expand_path('../lib', File.dirname(__FILE__))
+$LOAD_PATH.unshift File.expand_path('../../lib', File.dirname(__FILE__))
 require "liquidprof"
 
 def assert_profile_result(expected, template_str)

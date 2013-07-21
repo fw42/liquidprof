@@ -53,3 +53,9 @@ will generate a report like this:
 TODO
 ----
 * Fancy HTML reporter
+
+Tests
+-----
+* Run ```./add_liquid_tests.sh <path_to_liquid_git_repo>```
+* Run ```rake test``` to run LiquidProf tests
+* Run ```rake test_liquid``` to run Liquid tests with LiquidProf profiling enabled

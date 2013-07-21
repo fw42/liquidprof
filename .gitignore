@@ -1,1 +1,4 @@
 examples/
+test/liquid/lib
+test/liquid/test/liquid
+test/liquid/test/liquid_test_helper.rb
