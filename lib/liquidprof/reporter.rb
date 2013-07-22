@@ -10,8 +10,8 @@ module LiquidProf
     def summarize_stats(template)
       Profiler.dfs(template.root) do |node, pos|
         next unless pos == :pre
-        next unless prof.stats.key?(node.__id__)
-        node_summarize_stats(prof.stats[node.__id__])
+        next unless prof.stats.key?(node)
+        node_summarize_stats(prof.stats[node])
       end
       self
     end

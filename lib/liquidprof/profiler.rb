@@ -15,12 +15,13 @@ module LiquidProf
     end
 
     def profile(template, iterations=1, *args)
+      output = ""
       @templates << template
       iterations.times do
         stats_init(template)
-        template.render!(*args)
+        output = template.render!(*args)
       end
-      template
+      output
     end
 
     def remove_raw_markup
@@ -75,19 +76,19 @@ module LiquidProf
     end
 
     def stats_init_node(node)
-      @stats[node.__id__] ||= {}
+      @stats[node] ||= {}
       [:calls, :times, :lengths].each do |field|
-        @stats[node.__id__][field] ||= {}
-        @stats[node.__id__][field][:raw] ||= []
-        @stats[node.__id__][field][:raw] << 0
+        @stats[node][field] ||= {}
+        @stats[node][field][:raw] ||= []
+        @stats[node][field][:raw] << 0
       end
     end
 
     def stats_inc(node, time, length)
-      return unless @stats[node.__id__]
-      @stats[node.__id__][:calls][:raw][-1] += 1
-      @stats[node.__id__][:times][:raw][-1] += time
-      @stats[node.__id__][:lengths][:raw][-1] += length
+      return unless @stats[node]
+      @stats[node][:calls][:raw][-1] += 1
+      @stats[node][:times][:raw][-1] += time
+      @stats[node][:lengths][:raw][-1] += length
     end
 
     class << self

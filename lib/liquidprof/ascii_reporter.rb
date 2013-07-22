@@ -16,7 +16,7 @@ module LiquidProf
       summarize_stats(@template)
       sidenotes = Hash.new{ Array.new }
       res = render_source(@template) do |node, line|
-        sidenotes[line] += [ @prof.stats[node.__id__] ]
+        sidenotes[line] += [ @prof.stats[node] ]
         node.raw_markup
       end
       sidenotes = sidenotes.inject(Array.new) do |a,(k,v)|

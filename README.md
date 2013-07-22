@@ -4,6 +4,8 @@ LiquidProf
 LiquidProf is a simple profiler for the [Liquid](https://github.com/Shopify/liquid)
 templating language, inspired by [rblineprof](https://github.com/tmm1/rblineprof).
 
+This is work in progress and not really ready to use!
+
 Build status (master): [![Build Status](https://travis-ci.org/fw42/liquidprof.png)](https://travis-ci.org/fw42/liquidprof)
 
 Installation
@@ -85,3 +87,7 @@ Tests
 * Run ```./add_liquid_tests.sh <path_to_liquid_git_repo>```
 * Run ```rake test``` to run LiquidProf tests
 * Run ```rake test_liquid``` to run Liquid tests with LiquidProf profiling enabled
+
+Bugs
+----
+* LiquidProf is not thread-safe in some situations. Enabling/disabling the profiler in one thread will do so for all other threads as well.

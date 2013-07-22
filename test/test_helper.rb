@@ -67,39 +67,40 @@ end
 def assert_profile_syntax_doesnt_matter(template_str, iterations=1)
   profs = []
   templates = []
+  outputs = []
 
   profs << LiquidProf::Profiler.start
   templates << Liquid::Template.new
   templates.last.parse(template_str)
-  profs.last.profile(templates.last, iterations)
+  outputs << profs.last.profile(templates.last, iterations)
   LiquidProf::Profiler.stop
 
   profs << LiquidProf::Profiler.start
   templates << Liquid::Template.parse(template_str)
-  profs.last.profile(templates.last, iterations)
+  outputs << profs.last.profile(templates.last, iterations)
   LiquidProf::Profiler.stop
 
   profs << LiquidProf::Profiler.profile(iterations) do
     templates << Liquid::Template.new
     templates.last.parse(template_str)
-    templates.last.render
+    outputs << templates.last.render
   end
 
   profs << LiquidProf::Profiler.profile(iterations) do
     templates << Liquid::Template.parse(template_str)
-    templates.last.render
+    outputs << templates.last.render
   end
+
+  assert_equal 1, outputs.uniq.length
+  assert_equal 1, profs.first.templates.length
 
   assert_equal profs, profs.compact
   0.upto(profs.length-2) do |i|
     (i+1).upto(profs.length-1) do |j|
-      assert profs[i] != profs[j]
+      assert profs[i].__id__ != profs[j].__id__
       assert_stats_equal(profs[i], profs[j])
     end
   end
-
-  assert_equal 1, templates.map{ |template| template.render }.uniq.length
-  assert_equal 1, profs.first.templates.length
 
   return profs.first, templates.first
 end
