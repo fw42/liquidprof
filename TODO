@@ -1,0 +1,17 @@
+* Tests
+  * All tags are counted correctly
+    * n times in loops
+    * 0 times in anevaluated branches
+    * 0 times in comment and raw
+    * inherited tags are counted correctly
+  * output byte length is correct and adds up
+  * min < average < max always holds
+  * stddev correct?
+
+* Fancy HTML reporter with highlight.js and tooltips
+
+* Summary stats for reporters
+
+* Package as gem
+  * Travis CI
+  * Rubygems
