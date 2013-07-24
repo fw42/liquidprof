@@ -6,8 +6,6 @@ templating language, inspired by [rblineprof](https://github.com/tmm1/rblineprof
 
 This is work in progress and not really ready to use!
 
-Build status (master): [![Build Status](https://travis-ci.org/fw42/liquidprof.png)](https://travis-ci.org/fw42/liquidprof)
-
 Installation
 ------------
 * ```gem install liquidprof``` (https://rubygems.org/gems/liquidprof)

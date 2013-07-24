@@ -8,7 +8,7 @@ end
 
 desc "Build the gem and release it to rubygems.org"
 task :release => :gem do
-  sh "gem push pkg/liquid-#{gemspec.version}.gem"
+  sh "gem push pkg/liquidprof-#{gemspec.version}.gem"
 end
 
 Rake::TestTask.new(:test) do |t|
