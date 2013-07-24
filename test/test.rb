@@ -6,13 +6,6 @@ class SomeTestClass
   end
 end
 
-
-def assert_block_syntax()
-end
-
-def assert_stats_sound(prof, document, runs=1)
-end
-
 class LiquidProfTest < Minitest::Test
   def test_hooking_and_unhooking_works
     called = false

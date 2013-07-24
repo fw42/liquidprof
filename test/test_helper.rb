@@ -64,35 +64,49 @@ def assert_profile_iterations_dont_matter(*profs)
   end
 end
 
-def assert_profile_syntax_doesnt_matter(template_str, iterations=1)
+def assert_profile_syntax_doesnt_matter(template_str, iterations=1, template_iterations=2)
   profs = []
   templates = []
   outputs = []
 
   profs << LiquidProf::Profiler.start
-  templates << Liquid::Template.new
-  templates.last.parse(template_str)
-  outputs << profs.last.profile(templates.last, iterations)
+  template_iterations.times do
+    templates << Liquid::Template.new
+    templates.last.parse(template_str)
+    outputs << profs.last.profile(templates.last, iterations)
+  end
   LiquidProf::Profiler.stop
 
   profs << LiquidProf::Profiler.start
-  templates << Liquid::Template.parse(template_str)
-  outputs << profs.last.profile(templates.last, iterations)
+  template_iterations.times do
+    templates << Liquid::Template.parse(template_str)
+    outputs << profs.last.profile(templates.last, iterations)
+  end
   LiquidProf::Profiler.stop
 
   profs << LiquidProf::Profiler.profile(iterations) do
-    templates << Liquid::Template.new
-    templates.last.parse(template_str)
-    outputs << templates.last.render
+    template_iterations.times do
+      templates << Liquid::Template.new
+      templates.last.parse(template_str)
+      outputs << templates.last.render
+    end
   end
 
   profs << LiquidProf::Profiler.profile(iterations) do
-    templates << Liquid::Template.parse(template_str)
-    outputs << templates.last.render
+    template_iterations.times do
+      templates << Liquid::Template.parse(template_str)
+      outputs << templates.last.render
+    end
   end
 
   assert_equal 1, outputs.uniq.length
-  assert_equal 1, profs.first.templates.length
+  assert_equal profs.length * template_iterations, outputs.length
+  profs.each do |prof|
+    assert_equal template_iterations, prof.templates.length
+    assert_equal template_iterations, prof.stats.keys.select{ |key|
+      key.class == Liquid::Document
+    }.length
+  end
 
   assert_equal profs, profs.compact
   0.upto(profs.length-2) do |i|

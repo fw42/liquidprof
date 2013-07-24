@@ -1,21 +1,31 @@
 module LiquidProf
   class AsciiReporter < Reporter
-    def format_node_stats(stats)
+    def format_node_stats(stats, skip_times=false)
       [
-        "%dx" % stats[:calls][:avg],
+        skip_times ? nil : ("%dx" % stats[:calls][:avg]),
         "%.2fms" % (1000.0 * stats[:times][:avg]),
         format_bytes(stats[:lengths][:avg])
-      ].join(", ")
+      ].compact.join(", ")
     end
 
-    def self.report(prof, template)
-      AsciiReporter.new(prof, template).report()
+    def self.report(prof)
+      AsciiReporter.new(prof).report()
     end
 
     def report
-      summarize_stats(@template)
+      output = ""
+      @prof.templates.each do |template|
+        output << report_template(template)
+        output << "\n"
+        output << "\n" if @prof.templates.length > 1
+      end
+      output
+    end
+
+    def report_template(template)
+      summarize_stats(template)
       sidenotes = Hash.new{ Array.new }
-      res = render_source(@template) do |node, line|
+      res = render_source(template) do |node, line|
         sidenotes[line] += [ @prof.stats[node] ]
         node.raw_markup
       end
@@ -31,6 +41,7 @@ module LiquidProf
         end
       end
 
+      output << [ "", format_node_stats(@prof.stats[template.root], true), "" ]
       format_table(output)
     end
 
@@ -51,7 +62,12 @@ module LiquidProf
         end
       end
 
-      lines.map{ |line| line.join("  |  ") }.join("\n")
+      table = ""
+      table << [ " " * (max_width[0]+2), "-" * (max_width[1]+4), "" ].join("+") + "\n"
+      table << lines[0..-2].map{ |line| line.join("  |  ") }.join("\n") + "\n"
+      table << [ " " * (max_width[0]+2), "-" * (max_width[1]+4), "" ].join("+") + "\n"
+      table << lines.last.join("     ").rjust(max_width[1])
+      table
     end
   end
 end

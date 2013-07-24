@@ -8,13 +8,6 @@
   * min < average < max always holds
   * stddev correct?
 
-* clean up API (if stats keys are nodes, no need to pass template as arg all the time)
-* test multiple template renderings in assert_syntax thing
-
-* Fancy HTML reporter with highlight.js and tooltips
-
-* Summary stats for reporters
-
 * Package as gem
   * Travis CI
   * Rubygems

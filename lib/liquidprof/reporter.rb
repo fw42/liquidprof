@@ -2,9 +2,8 @@ module LiquidProf
   class Reporter
     attr_reader :prof
 
-    def initialize(prof, template)
+    def initialize(prof)
       @prof = prof
-      @template = template
     end
 
     def summarize_stats(template)
