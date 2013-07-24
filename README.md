@@ -41,7 +41,7 @@ LiquidProf::Profiler.stop
 Reporting
 ---------
 ```ruby
-puts LiquidProf::AsciiReporter.report(prof, template)
+puts LiquidProf::AsciiReporter.report(prof)
 ```
 
 will generate a report like this:
