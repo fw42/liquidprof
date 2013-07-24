@@ -14,8 +14,8 @@ def profile(template_str)
   profs = [*1..5].map do |i|
     assert_profile_syntax_doesnt_matter(template_str, i)
   end
-  assert_profile_iterations_dont_matter(*profs.map{ |res| res.first })
-  assert_raw_markup_present(profs.first.last.root)
+  assert_profile_iterations_dont_matter(*profs)
+  assert_raw_markup_present(profs.first.templates.first.root)
   profs.first
 end
 
@@ -36,14 +36,16 @@ def assert_raw_markup_present(root)
 end
 
 def assert_stats_equal(prof1, prof2)
-  prof1 = prof1.stats.values.sort_by{ |h| h.to_s }
-  prof2 = prof2.stats.values.sort_by{ |h| h.to_s }
-  assert_equal prof1.length, prof2.length
+  assert_equal prof1.stats.length, prof2.stats.length
+  keys1 = prof1.stats.keys.sort_by{ |node| node.class.to_s }
+  keys2 = prof2.stats.keys.sort_by{ |node| node.class.to_s }
+  assert_equal keys1.map(&:class).map(&:to_s), keys2.map(&:class).map(&:to_s)
 
-  prof1.each_index do |i|
-    assert_equal prof1[i][:times][:raw].length, prof2[i][:times][:raw].length
-    assert_equal prof1[i][:calls], prof2[i][:calls]
-    assert_equal prof1[i][:lengths], prof2[i][:lengths]
+  keys1.each_index do |i|
+    k1, k2 = keys1[i], keys2[i]
+    assert_equal prof1.stats[k1][:times][:raw].length, prof2.stats[k2][:times][:raw].length
+    assert_equal prof1.stats[k1][:calls], prof2.stats[k2][:calls]
+    assert_equal prof1.stats[k1][:lengths], prof2.stats[k2][:lengths]
   end
 end
 
@@ -116,5 +118,5 @@ def assert_profile_syntax_doesnt_matter(template_str, iterations=1, template_ite
     end
   end
 
-  return profs.first, templates.first
+  return profs.first
 end
